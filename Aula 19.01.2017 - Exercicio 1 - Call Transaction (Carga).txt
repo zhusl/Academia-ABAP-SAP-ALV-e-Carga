@@ -1,0 +1,92 @@
+* ---- CALL TRANSACTION (ROTINA DE GRAVAÇÃO DE CARGA) ---- *
+
+REPORT Z_TESTE_INST.
+
+*&---------------------------------------------------------------------*
+*&DECLARAÇÕES DE VARIÁVEIS
+*&---------------------------------------------------------------------*
+"Variáveis para CALL TRANSACTION
+DATA: bdc_tab      TYPE STANDARD TABLE OF bdcdata,
+      ti_mensagens TYPE STANDARD TABLE OF bdcmsgcoll.
+
+
+*&---------------------------------------------------------------------*
+*&FORMS
+*&---------------------------------------------------------------------*
+FORM dynpro USING dynbegin name value.
+  IF dynbegin = abap_true.
+    APPEND INITIAL LINE TO bdc_tab ASSIGNING FIELD-SYMBOL(<bdc>).
+    <bdc>-program  = name.
+    <bdc>-dynpro   = value.
+    <bdc>-dynbegin = abap_true.
+  ELSE.
+    APPEND INITIAL LINE TO bdc_tab ASSIGNING <bdc>.
+    <bdc>-fnam = name.
+    <bdc>-fval = value.
+  ENDIF.
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&FORM SHDB
+*&---------------------------------------------------------------------*
+FORM shdb.
+  CLEAR: bdc_tab, ti_mensagens.
+
+  PERFORM dynpro USING  'X'   'YSFI_CONFIGURA_CIAP'        '1000'.
+  PERFORM dynpro USING  ''    'BDC_OKCODE'                 '=B_CF16'.
+
+  PERFORM dynpro USING  'X'   'SAPLYSFI_CIAP_F_BEM'        '0001'.
+  PERFORM dynpro USING  ''    'BDC_OKCODE'                 '=AEND'.
+
+  PERFORM dynpro USING  'X'   'SAPLYSFI_CIAP_F_BEM'        '0001'.
+  PERFORM dynpro USING  ''    'BDC_OKCODE'                 '=NEWL'.
+
+  PERFORM dynpro USING  'X'   'SAPLYSFI_CIAP_F_BEM'        '0001'.
+  PERFORM dynpro USING  ''    'BDC_OKCODE'                 '=SAVE'.
+
+  PERFORM dynpro USING  ''    'BDC_CURSOR'                   'YSFI_CIAP_F_BEM-FUNC(01)'.
+  PERFORM dynpro USING  ''    'YSFI_CIAP_F_BEM-J_1BCNAE(01)' '0210101'.
+  PERFORM dynpro USING  ''    'YSFI_CIAP_F_BEM-DT_FIM(01)'   '31011971'.
+  PERFORM dynpro USING  ''    'YSFI_CIAP_F_BEM-DT_INI(01)'   '01011971'.
+  PERFORM dynpro USING  ''    'YSFI_CIAP_F_BEM-FUNC(01)'     'Gentileza gera Gentileza!'.
+
+  PERFORM dynpro USING  ''    'BDC_CURSOR'                   'YSFI_CIAP_F_BEM-FUNC(02)'.
+  PERFORM dynpro USING  ''    'YSFI_CIAP_F_BEM-DT_INI(02)'   '01031971'.
+  PERFORM dynpro USING  ''    'YSFI_CIAP_F_BEM-J_1BCNAE(02)' '0210101'.
+  PERFORM dynpro USING  ''    'YSFI_CIAP_F_BEM-DT_FIM(02)'   '31031971'.
+  PERFORM dynpro USING  ''    'YSFI_CIAP_F_BEM-FUNC(02)'     'Gentileza pode gerar mais Gentileza!'.
+
+  PERFORM dynpro USING  'X'   'SAPLYSFI_CIAP_F_BEM'        '0001'.
+  PERFORM dynpro USING  ''    'BDC_CURSOR'                 'YSFI_CIAP_F_BEM-J_1BCNAE(03)'.
+  PERFORM dynpro USING  ''    'BDC_OKCODE'                 '=BACK'.
+
+  PERFORM dynpro USING  'X'   'SAPLYSFI_CIAP_F_BEM'        '0001'.
+  PERFORM dynpro USING  ''    'BDC_CURSOR'                 'YSFI_CIAP_F_BEM-J_1BCNAE(01)'.
+  PERFORM dynpro USING  ''    'BDC_OKCODE'                 '=BACK'.
+
+  PERFORM dynpro USING  'X'   'YSFI_CONFIGURA_CIAP'        '1000'.
+  PERFORM dynpro USING  ''    'BDC_OKCODE'                 '/EE'.
+  PERFORM dynpro USING  ''    'BDC_CURSOR'                 '%CT01000_1000'.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&FORM DE CHAMADA DO CALL TRANSACTION
+*&---------------------------------------------------------------------*
+FORM call_transaction.
+    DATA: wa_opcoes TYPE ctu_params.
+
+*Opções do CALL TRANSACTION
+    CLEAR wa_opcoes.
+    wa_opcoes-dismode  = 'A'.
+    wa_opcoes-updmode  = 'A'.
+    wa_opcoes-cattmode = ' '.
+    wa_opcoes-racommit = ' '.
+    wa_opcoes-nobinpt  = ' '.
+    wa_opcoes-nobiend  = 'X'.
+
+*Chamada ao CALL TRANSACTION
+  CALL TRANSACTION 'YSCIAP' USING bdc_tab OPTIONS FROM wa_opcoes MESSAGES INTO ti_mensagens.
+*  LOOP AT messtab.
+*  ENDLOOP.
+ENDFORM.

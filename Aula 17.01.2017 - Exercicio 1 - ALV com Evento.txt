@@ -1,0 +1,189 @@
+*--- Relatório com Evento ao Clicar em uma Linha ---*
+
+REPORT z_rel2_al06.
+
+*************************************************************************
+"Declarações:
+*************************************************************************
+TYPES: BEGIN OF ty_1001,
+         bukrs TYPE t001-bukrs, " t001 -> Tabela
+         butxt TYPE t001-butxt,
+         ort01 TYPE t001-ort01,
+         land1 TYPE t001-land1,
+       END OF ty_1001.
+
+DATA: ti_t001 TYPE STANDARD TABLE OF ty_1001.
+
+* Declarações do ALV
+DATA: ti_fieldcat TYPE STANDARD TABLE OF slis_fieldcat_alv,  "Do tipo do parâmetro da tabela da função - Campos
+      ti_events   TYPE STANDARD TABLE OF slis_alv_event,     "Do tipo do parâmetro da tabela da função - Eventos
+      wa_layout   TYPE slis_layout_alv.                      "Do tipo do parâmetro da tabela da função - Aparência
+
+*************************************************************************
+"Eventos
+*************************************************************************
+START-OF-SELECTION.
+  PERFORM obtem_dados.
+
+END-OF-SELECTION.
+  PERFORM monta_fieldcat.
+  PERFORM registra_eventos.
+  PERFORM define_layout.
+  PERFORM exibe_alv.
+
+*************************************************************************
+  "Subrotinas
+*************************************************************************
+
+*&---------------------------------------------------------------------*
+*&      Form  obtem_dados
+*&---------------------------------------------------------------------*
+FORM obtem_dados .
+  SELECT bukrs
+         butxt
+         ort01
+         land1
+    FROM t001
+    INTO TABLE ti_t001
+    UP TO 30 ROWS. "Até 30 linhas
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  monta_fieldcat
+*&---------------------------------------------------------------------*
+FORM monta_fieldcat .
+
+*BUKRS BUTXT ORT01 LAND1
+
+  FIELD-SYMBOLS <fs_fieldcat> LIKE LINE OF ti_fieldcat. "Linha na tabela - ti_fieldcat(Catálogo de Campos)
+
+  APPEND INITIAL LINE TO ti_fieldcat ASSIGNING <fs_fieldcat>. "Campo - INITIAL LINE (Adiciona uma nova linha)
+  <fs_fieldcat>-fieldname = 'BUKRS'.
+  <fs_fieldcat>-tabname = 'ti_t001'.
+  <fs_fieldcat>-seltext_m = 'CÓDIGO'.
+
+  APPEND INITIAL LINE TO ti_fieldcat ASSIGNING <fs_fieldcat>. "Campo
+  <fs_fieldcat>-fieldname = 'BUTXT'.
+  <fs_fieldcat>-tabname = 'ti_t001'.
+  <fs_fieldcat>-seltext_m = 'EMPRESA'.
+
+  APPEND INITIAL LINE TO ti_fieldcat ASSIGNING <fs_fieldcat>. "Campo
+  <fs_fieldcat>-fieldname = 'ORT01'.
+  <fs_fieldcat>-tabname = 'ti_t001'.
+  <fs_fieldcat>-seltext_m = 'ENDEREÇO'.
+
+  APPEND INITIAL LINE TO ti_fieldcat ASSIGNING <fs_fieldcat>. "Campo
+  <fs_fieldcat>-fieldname = 'LAND1'.
+  <fs_fieldcat>-tabname = 'ti_t001'.
+  <fs_fieldcat>-seltext_m = 'PAIS'.
+  <fs_fieldcat>-hotspot = abap_true. "Hotspot
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  registra_eventos
+*&---------------------------------------------------------------------*
+FORM registra_eventos.
+
+  "FIELD-SYMBOLS <fs_eventos> LIKE LINE OF ti_events.
+
+  APPEND INITIAL LINE TO ti_events ASSIGNING FIELD-SYMBOL(<fs_eventos>). "Campo direto com Fieldsimbols
+  <fs_eventos>-name = 'TOP_OF_PAGE'. "Evento
+  <fs_eventos>-form = 'MONTA_CABECALHO'. "Perform (Volta a subrotina e chama o perform)
+
+  APPEND INITIAL LINE TO ti_events ASSIGNING <fs_eventos>.
+  <fs_eventos>-name = 'USER_COMMAND'. "Evento
+  <fs_eventos>-form = 'MONTA_ACAO'. "Perform (Volta a subrotina e chama o perform)
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  define_layout
+*&---------------------------------------------------------------------*
+FORM define_layout .
+
+  wa_layout-zebra = abap_true. "Definindo a aparência
+  wa_layout-colwidth_optimize = abap_true. "Otimizar o tamanho das Colunas
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  exibe_alv
+*&---------------------------------------------------------------------*
+FORM exibe_alv.
+  "DATA l_program TYPE sy-repid. Mesmo efeito abaixo
+  DATA(l_program) = sy-repid. "Chama o nome do programa
+
+  "Criando o Relatório
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = l_program
+*     I_CALLBACK_USER_COMMAND           = ' '
+*     I_CALLBACK_TOP_OF_PAGE            = 'MONTAR_CABECALHO'
+*     I_STRUCTURE_NAME   =
+      is_layout          = wa_layout   "Aparência
+      it_fieldcat        = ti_fieldcat "Campos da Fieldcat
+*     IT_SORT            =
+      it_events          = ti_events
+    TABLES
+      t_outtab           = ti_t001 "Tabela de Origem
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  monta_cabecalho
+*&---------------------------------------------------------------------*
+FORM monta_cabecalho.
+
+  DATA: ti_header TYPE slis_t_listheader, "Cabeçalho
+        l_date    TYPE char10. "Data
+
+  WRITE sy-datum TO l_date. "Recebendo a Data
+
+  APPEND INITIAL LINE TO ti_header ASSIGNING FIELD-SYMBOL(<fs_header>).
+  <fs_header>-typ  = 'H'. "Negrito
+  CONCATENATE 'Programa :' sy-repid ':' 'Data' l_date INTO <fs_header>-info SEPARATED BY space.
+
+  APPEND INITIAL LINE TO ti_header ASSIGNING <fs_header>.
+  <fs_header>-typ  = 'S'. "Normal
+  <fs_header>-info = sy-title.
+
+  APPEND INITIAL LINE TO ti_header ASSIGNING <fs_header>.
+  <fs_header>-typ  = 'A'. "Itálico
+  CONCATENATE 'Usuário :' sy-uname INTO <fs_header>-info SEPARATED BY space.
+
+  CALL FUNCTION 'REUSE_ALV_COMMENTARY_WRITE'
+    EXPORTING
+      it_list_commentary = ti_header.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  monta_acao
+*&---------------------------------------------------------------------*
+FORM monta_acao USING ucomm    LIKE sy-ucomm
+                      selfield TYPE kkblo_selfield.
+  DATA lc_txt(60).
+
+  CASE ucomm.
+    WHEN '&IC1'.
+      READ TABLE ti_t001 INDEX selfield-tabindex "Linha na tabela na posição x
+           ASSIGNING FIELD-SYMBOL(<fs_t001>).    "para o ponteiro
+      IF sy-subrc EQ 0.
+*        WRITE: 'Você clicou na', selfield-tabindex, 'linha'.
+*        WRITE: / <fs_t001>-butxt.
+        CONCATENATE 'Você clicou na ' <fs_t001>-butxt INTO lc_txt.
+
+        MESSAGE lc_txt TYPE 'I'.
+      ENDIF.
+    WHEN OTHERS.
+  ENDCASE.
+
+ENDFORM.

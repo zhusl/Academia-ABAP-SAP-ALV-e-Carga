@@ -1,0 +1,199 @@
+
+---- Carga com Call Transaction ------
+
+----- Dados para Importação -----
+AAAA;1;1;1000;BRL
+BBBB;3;2;1500;BRL
+CCCC;2;1;1750;BRL
+DDDD;1;2;2500;BRL
+---------------------------------
+
+REPORT z_carga_inst.
+
+TYPES: BEGIN OF ty_txt,
+         txt_linha(250),
+       END OF ty_txt.
+
+TYPES: tyt_txt TYPE STANDARD TABLE OF ty_txt.   "Similar ao tipo declarado acima
+
+TYPES: BEGIN OF ty_livro,
+         codliv   TYPE zylivro_inst-codliv,
+         descliv  TYPE zylivro_inst-descliv,
+         codautor TYPE c LENGTH 5,
+         codgen   TYPE c LENGTH 5,
+         valliv   TYPE c LENGTH 13,
+         moeda    TYPE zylivro_inst-moeda,
+       END OF     ty_livro.
+
+TYPES: tyt_livro TYPE STANDARD TABLE OF ty_livro.   "Similar ao tipo declarado acima
+
+"Variáveis para CALL TRANSACTION
+DATA: bdc_tab      TYPE STANDARD TABLE OF bdcdata,      "Recebe o passo-a-passo da gravação
+      ti_mensagens TYPE STANDARD TABLE OF bdcmsgcoll,   "Recebe as mensagens de erro da gravação
+      ti_txt       TYPE tyt_txt,                        "Recebe o texto no arquivo de importação de forma integral
+      ti_livro     TYPE STANDARD TABLE OF ty_livro.     "Recebe as linhas com os campos na tabela
+
+*----------------------------------------------------
+*tela de seleção
+*----------------------------------------------------
+PARAMETERS: p_arq LIKE rlgrap-filename. "Diretório do arquivo
+
+*----------------------------------------------------
+*EVENTOS
+*----------------------------------------------------
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_arq.  "Matchcode ou F4 no campo
+  PERFORM obter_diretorio CHANGING p_arq.
+
+START-OF-SELECTION.
+  PERFORM ler_arquivo USING p_arq      "Manda o diretório com o nome do arquivo
+                      CHANGING ti_txt. "Recebe o conteudo de dentro do arquivo
+
+  PERFORM processar_txt USING ti_txt       "Recebe o texto integral, trata e coloca dentro da tabela
+                        CHANGING ti_livro.
+
+  PERFORM montar_bdcdata. "Preenche a tabela com as ações (passo-a-passo) a serem executadas
+  PERFORM call_transaction USING 'ZCARGA_INST'.  "Chama a transação passando as ações (passo-a-passo) a serem executadas
+
+*&---------------------------------------------------------------------*
+*&      Form  OBTER_DIRETORIO
+*&---------------------------------------------------------------------*
+FORM obter_diretorio  CHANGING p_arq.
+
+  "Cria uma janela para selecionar o arquivo com o diretório (caminho) do mesmo
+  CALL FUNCTION 'KD_GET_FILENAME_ON_F4'
+    CHANGING
+      file_name     = p_arq
+    EXCEPTIONS
+      mask_too_long = 1
+      OTHERS        = 2.
+
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  LER_ARQUIVO
+*&---------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+FORM ler_arquivo  USING    p_arq
+                  CHANGING p_txt TYPE tyt_txt.
+
+  DATA v_filename TYPE string.
+  v_filename = p_arq.           "Diretório com o nome e extensão do arquivo
+
+  CALL FUNCTION 'GUI_UPLOAD'
+    EXPORTING
+      filename                = v_filename
+    TABLES
+      data_tab                = p_txt       "Importando o conteudo dentro do arquivo
+    EXCEPTIONS
+      file_open_error         = 1
+      file_read_error         = 2
+      no_batch                = 3
+      gui_refuse_filetransfer = 4
+      invalid_type            = 5
+      no_authority            = 6
+      unknown_error           = 7
+      bad_data_format         = 8
+      header_not_allowed      = 9
+      separator_not_allowed   = 10
+      header_too_long         = 11
+      unknown_dp_error        = 12
+      access_denied           = 13
+      dp_out_of_memory        = 14
+      disk_full               = 15
+      dp_timeout              = 16
+      OTHERS                  = 17.
+
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  PROCESSAR_TXT
+*&---------------------------------------------------------------------*
+FORM processar_txt  USING    p_txt   TYPE tyt_txt
+                    CHANGING p_livro TYPE tyt_livro.
+
+  DATA wa_livro LIKE LINE OF p_livro.
+
+  LOOP AT p_txt ASSIGNING FIELD-SYMBOL(<txt>).
+    SPLIT <txt>-txt_linha AT ';' INTO   "Função que cria sub-strings a partir de um string
+      wa_livro-descliv
+      wa_livro-codautor
+      wa_livro-codgen
+      wa_livro-valliv
+      wa_livro-moeda.
+    APPEND wa_livro TO p_livro.   "Colocar dentro da tabela
+    CLEAR wa_livro.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&FORMS
+*&---------------------------------------------------------------------*
+FORM dynpro USING dynbegin name value.
+  IF dynbegin = abap_true.    "ou seja, 'X'
+    APPEND INITIAL LINE TO bdc_tab ASSIGNING FIELD-SYMBOL(<bdc>).  "INITIAL LINE -> Nova linha
+    <bdc>-program  = name.        "Nome do programa                "Preenchimento da tabela BDC
+    <bdc>-dynpro   = value.       "Nº tela
+    <bdc>-dynbegin = abap_true.   "1ª Linha na tela
+  ELSE.
+    APPEND INITIAL LINE TO bdc_tab ASSIGNING <bdc>.   "INITIAL LINE -> Nova linha
+    <bdc>-fnam = name.    "Nome do campos             "Preenchimento da tabela BDC
+    <bdc>-fval = value.   "Valor do campo
+  ENDIF.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  MONTAR_BDCDATA
+*&---------------------------------------------------------------------*
+FORM montar_bdcdata .
+
+  FIELD-SYMBOLS <livro> LIKE LINE OF ti_livro.
+
+  "Passando os valores da tabela interna com as ações a serem executadas para a "BDCDATA"
+  LOOP AT ti_livro ASSIGNING <livro>.
+    PERFORM dynpro USING: 'X' 'Z_SHDB_INST'	'1000',
+                          ' ' 'BDC_CURSOR'  'P_INS',
+                          ' ' 'BDC_OKCODE'  '=ONLI',
+                          ' ' 'P_INS'	      'X'.
+
+    PERFORM dynpro USING: 'X' 'Z_SHDB_INST'  '0100',
+                          ' ' 'BDC_OKCODE'   '=SAVE',
+                          ' ' 'ZYLIVRO_INST-DESCLIV'   <livro>-descliv,   "Valores da tabela interna para o campo
+                          ' ' 'ZYLIVRO_INST-CODAUTOR'  <livro>-codautor,  "Valores da tabela interna para o campo
+                          ' ' 'ZYLIVRO_INST-CODGEN'    <livro>-codgen,    "Valores da tabela interna para o campo
+                          ' ' 'ZYLIVRO_INST-VALLIV'    <livro>-valliv,    "Valores da tabela interna para o campo
+                          ' ' 'ZYLIVRO_INST-MOEDA'     <livro>-moeda.     "Valores da tabela interna para o campo
+  ENDLOOP.
+
+  PERFORM dynpro USING: 'X' 'Z_SHDB_INST'  '1000',
+                        ' ' 'BDC_OKCODE'   '/EE'.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&FORM DE CHAMADA DO CALL TRANSACTION
+*&---------------------------------------------------------------------*
+FORM call_transaction USING p_tcode.
+  DATA: wa_opcoes TYPE ctu_params.
+
+*Opções do CALL TRANSACTION
+  CLEAR wa_opcoes.
+  wa_opcoes-dismode  = 'A'.
+  wa_opcoes-updmode  = 'A'.
+  wa_opcoes-cattmode = ' '.
+  wa_opcoes-racommit = ' '.
+  wa_opcoes-nobinpt  = ' '.
+  wa_opcoes-nobiend  = 'X'.
+
+*Chamada ao CALL TRANSACTION
+  CALL TRANSACTION p_tcode USING bdc_tab                "Nome da transação com as ações
+                           OPTIONS FROM wa_opcoes       "Opções do Call Transaction
+                           MESSAGES INTO ti_mensagens.  "Mensagens de erro
+
+  LOOP AT ti_mensagens INTO DATA(wa_mensagens).
+  ENDLOOP.
+
+ENDFORM.

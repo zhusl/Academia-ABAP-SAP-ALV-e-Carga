@@ -1,0 +1,209 @@
+---- Carga com ENHANCEMENT ----
+
+REPORT z_carga_al06.
+
+TYPES: BEGIN OF ty_txt,
+         txt_linha(250),
+       END OF ty_txt.
+
+TYPES: tyt_txt TYPE STANDARD TABLE OF ty_txt.
+
+
+TYPES: BEGIN OF ty_livro,
+         codliv   TYPE zylivro_inst-codliv,
+         descliv  TYPE zylivro_inst-descliv,
+         codautor TYPE c LENGTH 5,
+         codgen   TYPE c LENGTH 5,
+         valliv   TYPE c LENGTH 13,
+         moeda    TYPE zylivro_inst-moeda,
+       END OF     ty_livro.
+
+TYPES: tyt_livro TYPE STANDARD TABLE OF ty_livro.
+
+*CODLIV   ZELEMCODLIV_INST  INT2  5   0 Código do livro
+*DESCLIV  ZELEMDESCLIV_INST CHAR  4   0 0 Descrição do Livro
+*CODAUTOR ZELEMAUT_INST INT2      5   0 Codigo do Autor
+*CODGEN   ZELEMCODGEN_INST  INT2  5   0 Código de gênero
+*VALLIV   ZELEMVALLIV_INST  CURR  13  2 Valor do livro
+*MOEDA    WAERS CUKY              5   0 Código da moeda
+
+
+"Variáveis para CALL TRANSACTION
+DATA: bdc_tab      TYPE STANDARD TABLE OF bdcdata,
+      ti_mensagens TYPE STANDARD TABLE OF bdcmsgcoll,
+      ti_txt       TYPE tyt_txt, "STANDARD TABLE OF ty_txt,
+      ti_livro     TYPE STANDARD TABLE OF ty_livro.
+
+*----------------------------------------------------
+*tela de seleção
+*----------------------------------------------------
+PARAMETERS: p_arq   LIKE rlgrap-filename. "Diretório do arquivo
+
+*----------------------------------------------------
+*EVENTOS
+*----------------------------------------------------
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_arq.
+  PERFORM obter_diretorio CHANGING p_arq.
+
+START-OF-SELECTION.
+  PERFORM ler_arquivo    USING p_arq
+                      CHANGING ti_txt.
+
+  PERFORM processar_txt  USING ti_txt
+                      CHANGING ti_livro.
+
+  PERFORM montar_bdcdata.
+  PERFORM call_transaction USING 'ZCARGA_INST'.
+
+*&---------------------------------------------------------------------*
+*&      Form  OBTER_DIRETORIO
+*&---------------------------------------------------------------------*
+FORM obter_diretorio  CHANGING p_arq.
+  CALL FUNCTION 'KD_GET_FILENAME_ON_F4'
+    CHANGING
+      file_name     = p_arq
+    EXCEPTIONS
+      mask_too_long = 1
+      OTHERS        = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  LER_ARQUIVO
+*&---------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+FORM ler_arquivo  USING    p_arq
+                  CHANGING p_txt TYPE tyt_txt.
+
+  DATA v_filename TYPE string.
+  v_filename = p_arq.
+
+  CALL FUNCTION 'GUI_UPLOAD'
+    EXPORTING
+      filename                = v_filename
+    TABLES
+      data_tab                = p_txt
+    EXCEPTIONS
+      file_open_error         = 1
+      file_read_error         = 2
+      no_batch                = 3
+      gui_refuse_filetransfer = 4
+      invalid_type            = 5
+      no_authority            = 6
+      unknown_error           = 7
+      bad_data_format         = 8
+      header_not_allowed      = 9
+      separator_not_allowed   = 10
+      header_too_long         = 11
+      unknown_dp_error        = 12
+      access_denied           = 13
+      dp_out_of_memory        = 14
+      disk_full               = 15
+      dp_timeout              = 16
+      OTHERS                  = 17.
+
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  PROCESSAR_TXT
+*&---------------------------------------------------------------------*
+FORM processar_txt  USING    p_txt   TYPE tyt_txt
+                    CHANGING p_livro TYPE tyt_livro.
+
+  DATA wa_livro LIKE LINE OF p_livro.
+
+  LOOP AT p_txt ASSIGNING FIELD-SYMBOL(<txt>).
+    SPLIT <txt>-txt_linha AT ';' INTO
+      wa_livro-descliv
+      wa_livro-codautor
+      wa_livro-codgen
+      wa_livro-valliv
+      wa_livro-moeda.
+    APPEND wa_livro TO p_livro.
+    CLEAR wa_livro.
+  ENDLOOP.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&FORMS
+*&---------------------------------------------------------------------*
+FORM dynpro USING dynbegin name value.
+  IF dynbegin = abap_true.
+    APPEND INITIAL LINE TO bdc_tab ASSIGNING FIELD-SYMBOL(<bdc>).
+    <bdc>-program  = name.
+    <bdc>-dynpro   = value.
+    <bdc>-dynbegin = abap_true.
+  ELSE.
+    APPEND INITIAL LINE TO bdc_tab ASSIGNING <bdc>.
+    <bdc>-fnam = name.
+    <bdc>-fval = value.
+  ENDIF.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  MONTAR_BDCDATA
+*&---------------------------------------------------------------------*
+FORM montar_bdcdata .
+
+  FIELD-SYMBOLS <livro> LIKE LINE OF ti_livro.
+
+  LOOP AT ti_livro ASSIGNING <livro>.
+    PERFORM dynpro USING: 'X' 'Z_SHDB_INST'	'1000',
+                          ' ' 'BDC_CURSOR'  'P_INS',
+                          ' ' 'BDC_OKCODE'  '=ONLI',
+                          ' ' 'P_INS'	      'X'.
+
+    PERFORM dynpro USING: 'X' 'Z_SHDB_INST'  '0100',
+                          ' ' 'BDC_OKCODE'   '=SAVE',
+                          ' ' 'ZYLIVRO_INST-DESCLIV'   <livro>-descliv,
+                          ' ' 'ZYLIVRO_INST-CODAUTOR'  <livro>-codautor,
+                          ' ' 'ZYLIVRO_INST-CODGEN'    <livro>-codgen,
+                          ' ' 'ZYLIVRO_INST-VALLIV'    <livro>-valliv,
+                          ' ' 'ZYLIVRO_INST-MOEDA'     <livro>-moeda.
+  ENDLOOP.
+
+  PERFORM dynpro USING: 'X' 'Z_SHDB_INST'  '1000',
+                        ' ' 'BDC_OKCODE'   '/EE'.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&FORM DE CHAMADA DO CALL TRANSACTION
+*&---------------------------------------------------------------------*
+FORM call_transaction USING p_tcode.
+  DATA: wa_opcoes TYPE ctu_params.
+
+*Opções do CALL TRANSACTION
+  CLEAR wa_opcoes.
+  wa_opcoes-dismode  = 'E'.
+  wa_opcoes-updmode  = 'A'.
+  wa_opcoes-cattmode = ' '.
+  wa_opcoes-racommit = ' '.
+  wa_opcoes-nobinpt  = ' '.
+  wa_opcoes-nobiend  = 'X'.
+
+*Chamada ao CALL TRANSACTION
+  CALL TRANSACTION p_tcode USING bdc_tab OPTIONS FROM wa_opcoes MESSAGES INTO ti_mensagens.
+
+  LOOP AT ti_mensagens INTO DATA(wa_mensagens).
+  ENDLOOP.
+
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""$"$\SE:(1) Form. CALL_TRANSACTION, Fim                                                                                                                       A
+*$*$-Start: (1)---------------------------------------------------------------------------------$*$*
+ENHANCEMENT 1  Z_ENHANCEMENT_AL06.    "active version
+
+READ TABLE ti_mensagens WITH KEY MSGTYP = 'E' TRANSPORTING NO FIELDS.
+
+IF sy-subrc eq 0.
+  MESSAGE 'Deu erro!' TYPE 'S' DISPLAY LIKE 'E'.
+  else.
+    MESSAGE 'Beleza brou!' TYPE 'S'.
+ENDIF.
+
+ENDENHANCEMENT.
+*$*$-End:   (1)---------------------------------------------------------------------------------$*$*
+ENDFORM.

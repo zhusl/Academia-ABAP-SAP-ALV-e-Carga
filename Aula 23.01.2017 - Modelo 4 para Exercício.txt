@@ -1,0 +1,144 @@
+----- Modelo 4 -------
+
+REPORT z_modelo4.
+
+*&---------------------------------------------------------------------*
+*&DECLARAÇÕES DE Tipos
+*&---------------------------------------------------------------------*
+TYPES: BEGIN OF type_dados_txt,
+         txt_linha(250),
+       END OF type_dados_txt.
+
+
+*&---------------------------------------------------------------------*
+*&DECLARAÇÕES DE VARIÁVEIS
+*&---------------------------------------------------------------------*
+"Variáveis para CALL TRANSACTION
+DATA: bdc_tab      TYPE STANDARD TABLE OF bdcdata,
+      ti_mensagens TYPE STANDARD TABLE OF bdcmsgcoll.
+
+DATA: ti_dados_txt TYPE STANDARD TABLE OF type_dados_txt .
+
+
+*-----------------------------------------------------------------------*
+*   SELECTION-SCREEN                                                    *
+*-----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+PARAMETERS: p_arq     LIKE rlgrap-filename,   "Arquivo:
+            p_mode(1) DEFAULT 'A' OBLIGATORY. "Modo execução:
+SELECTION-SCREEN END OF BLOCK b1.
+
+*-----------------------------------------------------------------------*
+*   AT-SELECTION-SCREEN                                                 *
+*-----------------------------------------------------------------------*
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_arq.
+  PERFORM f_obtem_diretorio CHANGING p_arq.
+
+*-----------------------------------------------------------------------*
+*   START-OF-SELECTION                                                  *
+*-----------------------------------------------------------------------*
+START-OF-SELECTION.
+  PERFORM f_ler_arquivo.
+  PERFORM f_shdb.
+  PERFORM f_call_transaction USING 'SE38'.
+  "PERFORM f_erros.
+
+*-----------------------------------------------------------------------*
+*      Form  F_LER_ARQUIVO                                              *
+*-----------------------------------------------------------------------*
+*       Realiza a leitura do arquivo CSV e amazena os dados em tabela   *
+*       interna para processamento da carga.                            *
+*-----------------------------------------------------------------------*
+FORM f_ler_arquivo .
+
+  CALL FUNCTION 'WS_UPLOAD'
+    EXPORTING
+      filename                = p_arq
+      filetype                = 'ASC'
+    TABLES
+      data_tab                = ti_dados_txt
+    EXCEPTIONS
+      file_open_error         = 1
+      file_write_error        = 2
+      invalid_filesize        = 3
+      invalid_type            = 4
+      no_batch                = 5
+      unknown_error           = 6
+      invalid_table_width     = 7
+      gui_refuse_filetransfer = 8
+      customer_error          = 9
+      OTHERS                  = 10.
+
+  IF sy-subrc = 0.
+
+  ENDIF.
+
+ENDFORM.                    " F_LER_ARQUIVO
+
+*&---------------------------------------------------------------------*
+*&FORM SHDB
+*&---------------------------------------------------------------------*
+FORM f_shdb.
+
+
+
+
+
+
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&FORM DE CHAMADA DO CALL TRANSACTION
+*&---------------------------------------------------------------------*
+FORM f_call_transaction USING p_tcode.
+  DATA: wa_opcoes TYPE ctu_params.
+
+*Opções do CALL TRANSACTION
+  CLEAR wa_opcoes.
+  wa_opcoes-dismode  = 'A'.
+  wa_opcoes-updmode  = 'A'.
+  wa_opcoes-cattmode = ' '.
+  wa_opcoes-racommit = ' '.
+  wa_opcoes-nobinpt  = ' '.
+  wa_opcoes-nobiend  = 'X'.
+
+*Chamada ao CALL TRANSACTION
+  CALL TRANSACTION p_tcode USING bdc_tab OPTIONS FROM wa_opcoes MESSAGES INTO ti_mensagens.
+
+  LOOP AT ti_mensagens INTO DATA(wa_mensagens).
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&FORMS
+*&---------------------------------------------------------------------*
+FORM dynpro USING dynbegin name value.
+  IF dynbegin = abap_true.
+    APPEND INITIAL LINE TO bdc_tab ASSIGNING FIELD-SYMBOL(<bdc>).
+    <bdc>-program  = name.
+    <bdc>-dynpro   = value.
+    <bdc>-dynbegin = abap_true.
+  ELSE.
+    APPEND INITIAL LINE TO bdc_tab ASSIGNING <bdc>.
+    <bdc>-fnam = name.
+    <bdc>-fval = value.
+  ENDIF.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  F_OBTEM_DIRETORIO
+*&---------------------------------------------------------------------*
+FORM f_obtem_diretorio  CHANGING p_arq.
+  CALL FUNCTION 'KD_GET_FILENAME_ON_F4'
+    CHANGING
+      file_name     = p_arq
+    EXCEPTIONS
+      mask_too_long = 1
+      OTHERS        = 2.
+  IF sy-ucomm <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+        WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+ENDFORM.

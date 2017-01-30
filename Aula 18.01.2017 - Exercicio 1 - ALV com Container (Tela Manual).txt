@@ -1,0 +1,82 @@
+*---- AVL Manual com Tela e Orientação à Objeto (Sem Função de Relatório) ----*
+
+REPORT z_rel3_al06.
+
+DATA: ti_t001 TYPE STANDARD TABLE OF t001.
+
+* DECLARE REFERENCE VARIABLES TO THE ALV GRID AND THE CONTAINER
+DATA: o_grid      TYPE REF TO cl_gui_alv_grid,
+      o_container TYPE REF TO cl_gui_custom_container.
+
+START-OF-SELECTION.
+  PERFORM busca_dados.
+  CALL SCREEN 100.
+
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+  SET PF-STATUS 'STATUS_100'.
+  PERFORM exibe_alv.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+  CASE sy-ucomm.
+    WHEN 'EXIT' OR 'CANCEL' OR 'BACK'.
+      LEAVE PROGRAM.
+  ENDCASE.
+
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Form  BUSCA_DADOS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM busca_dados .
+  SELECT * FROM t001
+    INTO TABLE ti_t001
+    UP TO 30 ROWS.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  EXIBE_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM exibe_alv .
+  IF o_container IS NOT BOUND.
+
+    CREATE OBJECT o_container
+      EXPORTING
+        container_name = 'CONTAINER'. "Da minha tela
+
+    CREATE OBJECT o_grid
+      EXPORTING
+        i_parent = o_container. "Grade recebendo o container
+
+    "Inserte da tabela no display
+    CALL METHOD o_grid->set_table_for_first_display
+      EXPORTING
+        i_structure_name = 't001'   "Baseada na tabela
+*       is_variant       = l_layout
+*       i_save           = 'A'
+*       is_layout        = wa_layout
+      CHANGING
+        it_outtab        = ti_t001.
+
+  ENDIF.
+
+ENDFORM.

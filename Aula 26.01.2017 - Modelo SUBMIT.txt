@@ -1,0 +1,108 @@
+*--- SUBMIT -> Um Programa que Chama Outro Programa ---*
+
+*---- Programa Chamado ----*
+
+REPORT z_prog_chamado.
+
+
+DATA: v_erdat TYPE vbak-erdat.
+DATA: v_auart TYPE vbak-auart.
+
+SELECT-OPTIONS: s_erdat FOR v_erdat,
+                s_auart FOR v_auart.
+
+START-OF-SELECTION.
+
+  DATA: lv_line TYPE i.
+
+  lv_line = lines( s_erdat ).
+  WRITE: / 'Campo de entrada: S_ERDAT', lv_line, 'linhas'.
+
+  LOOP AT s_erdat.
+    WRITE: / s_erdat-low.
+  ENDLOOP.
+
+  lv_line = lines( s_auart ).
+  WRITE: / 'Campo de entrada: S_AUART', lv_line, 'linhas'.
+  LOOP AT s_auart.
+    WRITE: / s_auart-low.
+  ENDLOOP.
+
+
+*---- Programa Chamador ----*
+
+REPORT z_prog_chamador.
+
+DATA v_erdat TYPE vbrk-erdat.
+
+SELECT-OPTIONS: so_date FOR v_erdat.
+
+START-OF-SELECTION.
+
+  PERFORM submit_via_seltab.
+*  PERFORM submit_diretamente.
+*  PERFORM submit_variant.
+
+*&---------------------------------------------------------------------*
+*&      Form  SUBMIT_VIA_SELTAB
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM submit_via_seltab .
+  DATA: lt_seltab TYPE TABLE OF rsparams,
+        ls_seltab LIKE LINE OF lt_seltab.
+
+  LOOP AT so_date.
+    ls_seltab-selname = 'S_ERDAT'.          " Nome dos parametros do programa chamado
+    ls_seltab-kind    = 'S'.
+    ls_seltab-sign    = so_date-sign.
+    ls_seltab-option  = so_date-option.
+    ls_seltab-low     = so_date-low.
+    ls_seltab-high    = so_date-high.
+    APPEND ls_seltab TO lt_seltab.
+  ENDLOOP.
+
+  ls_seltab-selname = 'S_AUART'.
+  ls_seltab-kind    = 'S'.
+  ls_seltab-sign    = 'I'.
+  ls_seltab-option  = 'EQ'.
+  ls_seltab-low     = 'OR'.
+  APPEND ls_seltab TO lt_seltab.
+
+  SUBMIT z_prog_chamado
+    WITH SELECTION-TABLE lt_seltab
+    AND RETURN.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  SUBMIT_DIRETAMENTE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM submit_diretamente .
+  SUBMIT z_prog_chamado
+    WITH s_erdat IN so_date
+    WITH s_auart EQ 'OR' SIGN 'I'
+    AND RETURN.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  SUBMIT_VARIANT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM submit_variant .
+*==== Passa os parametros via Variant
+  " DEFAULT é uma variant do programa Z_PROG_CHAMADO
+  SUBMIT z_prog_chamado
+    USING SELECTION-SET 'DEFAULT'
+    AND RETURN.
+ENDFORM.

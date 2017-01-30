@@ -1,0 +1,76 @@
+*--- SUBMIT -> Um Programa que Chama Outro Programa ---*
+
+*---- Programa Chamador ----*
+
+REPORT zp1_al06.
+
+TYPES: BEGIN OF tb,
+         v1 TYPE p,
+       END OF tb.
+
+DATA it_pg TYPE STANDARD TABLE OF tb.
+
+  PERFORM submit.
+  PERFORM importar.
+  PERFORM exibir.
+*&---------------------------------------------------------------------*
+*&      Form  SUBMIT
+*&---------------------------------------------------------------------*
+FORM submit .
+  SUBMIT zp2_al06 AND RETURN.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  IMPORTAR
+*&---------------------------------------------------------------------*
+FORM importar .
+  IMPORT it_pg2 TO it_pg FROM MEMORY ID 'AREA'.  "Importando os dados da tabela na area de memória específica
+ENDFORM.                                         "para a minha tabela
+*&---------------------------------------------------------------------*
+*&      Form  EXIBIR
+*&---------------------------------------------------------------------*
+FORM exibir .
+  LOOP AT it_pg ASSIGNING FIELD-SYMBOL(<fs_pg>).
+    WRITE: / 'Valor: ', <fs_pg>-v1.
+  ENDLOOP.
+ENDFORM.
+
+
+*---- Programa Chamado ----*
+
+REPORT zp2_al06.
+
+TYPES: BEGIN OF tb,
+         v1 TYPE p,
+       END OF tb.
+
+DATA it_pg2 TYPE STANDARD TABLE OF tb.
+DATA wa_pg LIKE LINE OF it_pg2.
+
+  PERFORM carregar.
+  PERFORM exibir.
+  PERFORM exportar.
+
+*&---------------------------------------------------------------------*
+*&      Form  CARREGAR
+*&---------------------------------------------------------------------*
+FORM carregar .
+  DO 5 TIMES.
+    CLEAR wa_pg.
+    wa_pg-v1 = sy-index.
+    APPEND wa_pg TO it_pg2.
+  ENDDO.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  EXIBIR
+*&---------------------------------------------------------------------*
+FORM exibir .
+  LOOP AT it_pg2 ASSIGNING FIELD-SYMBOL(<fs_pg>).
+    WRITE: / 'Valor: ', <fs_pg>-v1.
+  ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  EXPORTAR
+*&---------------------------------------------------------------------*
+FORM exportar .
+  EXPORT it_pg2 TO MEMORY ID 'AREA'.  "Exportando os dados da tabela para um area de memória específica
+ENDFORM.

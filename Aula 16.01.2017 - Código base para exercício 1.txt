@@ -1,0 +1,189 @@
+REPORT Z_TESTE_HUGO_LISTAR.
+
+TABLES zteste_hugo.
+
+DATA: BEGIN OF st_zteste_hugo OCCURS 0, "Tabela interna com HEADER LINE
+        cpf TYPE zteste_hugo-cpf,
+        nome TYPE zteste_hugo-nome,
+        email TYPE zteste_hugo-email,
+        telefone TYPE zteste_hugo-telefone,
+        nascimento TYPE zteste_hugo-nascimento,
+        dtregistro TYPE zteste_hugo-dtregistro,
+        box(1)     TYPE c,
+      END OF st_zteste_hugo.
+
+DATA: ti_ztestehugo  LIKE STANDARD TABLE OF st_zteste_hugo WITH HEADER LINE,
+      wa_ztestehugo  LIKE LINE OF           ti_ztestehugo,
+      ti_fieldcat    TYPE                   slis_t_fieldcat_alv WITH HEADER LINE,
+      wa_ti_fieldcat LIKE LINE OF           ti_fieldcat,
+      wa_layout      TYPE                   slis_layout_alv.
+
+SELECT * FROM zteste_hugo into TABLE ti_ztestehugo.
+
+PERFORM exibe_dados.
+
+*&---------------------------------------------------------------------*
+*&      Form  EXIBE_DADOS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM exibe_dados.
+    PERFORM append_fieldcat.
+    PERFORM chama_alv USING ti_ztestehugo[] 'USER_COMMAND'.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  CHAMA_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM CHAMA_ALV USING ti_aux TYPE STANDARD TABLE
+                     aux    TYPE c.
+    DATA: l_repid like sy-repid.
+        l_repid = sy-repid.
+          CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+             EXPORTING
+                I_CALLBACK_PROGRAM   = l_repid
+                IT_FIELDCAT          = ti_fieldcat[]
+                IS_LAYOUT            = wa_layout
+                I_CALLBACK_PF_STATUS_SET = 'PF_STATUS_SET'
+                I_CALLBACK_USER_COMMAND  = aux
+             TABLES
+                T_OUTTAB             = ti_aux.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  APPEND_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM APPEND_FIELDCAT.
+  wa_ti_fieldcat-COL_POS = '1'.
+  wa_ti_fieldcat-FIELDNAME = 'cpf'.
+  wa_ti_fieldcat-TABNAME = 'ti_ztestehugo'.
+  wa_ti_fieldcat-SELTEXT_M = 'CPF'.
+  wa_ti_fieldcat-KEY = 'X'.
+  wa_layout-zebra = 'X'.
+  wa_layout-colwidth_optimize = 'X'.
+  wa_layout-confirmation_prompt = 'X'.
+  wa_layout-box_fieldname = 'BOX'.
+  wa_layout-box_tabname   = 'ti_ztestehugo'.
+  APPEND wa_ti_fieldcat TO ti_fieldcat.
+  CLEAR  wa_ti_fieldcat.
+
+  wa_ti_fieldcat-COL_POS = '2'.
+  wa_ti_fieldcat-FIELDNAME = 'nome'.
+  wa_ti_fieldcat-TABNAME = 'ti_ztestehugo'.
+  wa_ti_fieldcat-SELTEXT_M = 'Nome'.
+  APPEND wa_ti_fieldcat TO ti_fieldcat.
+  CLEAR  wa_ti_fieldcat.
+
+  wa_ti_fieldcat-COL_POS = '3'.
+  wa_ti_fieldcat-FIELDNAME = 'email'.
+  wa_ti_fieldcat-TABNAME = 'ti_ztestehugo'.
+  wa_ti_fieldcat-SELTEXT_M = 'Email'.
+  APPEND wa_ti_fieldcat TO ti_fieldcat.
+  CLEAR wa_ti_fieldcat.
+
+  wa_ti_fieldcat-COL_POS = '4'.
+  wa_ti_fieldcat-FIELDNAME = 'telefone'.
+  wa_ti_fieldcat-TABNAME = 'ti_ztestehugo'.
+  wa_ti_fieldcat-SELTEXT_M = 'Telefone'.
+  APPEND wa_ti_fieldcat TO ti_fieldcat.
+  CLEAR wa_ti_fieldcat.
+
+  wa_ti_fieldcat-COL_POS = '5'.
+  wa_ti_fieldcat-FIELDNAME = 'nascimento'.
+  wa_ti_fieldcat-TABNAME = 'ti_ztestehugo'.
+  wa_ti_fieldcat-SELTEXT_M = 'Nascimento'.
+  APPEND wa_ti_fieldcat TO ti_fieldcat.
+  CLEAR wa_ti_fieldcat.
+
+  wa_ti_fieldcat-COL_POS = '6'.
+  wa_ti_fieldcat-FIELDNAME = 'dtregistro'.
+  wa_ti_fieldcat-TABNAME = 'ti_ztestehugo'.
+  wa_ti_fieldcat-SELTEXT_M = 'Data de registro'.
+  APPEND wa_ti_fieldcat TO ti_fieldcat.
+  CLEAR wa_ti_fieldcat.
+ENDFORM.
+
+FORM PF_STATUS_SET USING pf_tab TYPE slis_t_extab.
+    SET PF-STATUS '1000' EXCLUDING pf_tab.
+ENDFORM.
+
+FORM USER_COMMAND USING r_ucomm     LIKE sy-ucomm
+                        rs_selfield TYPE slis_selfield.
+  DATA: resposta TYPE n.
+
+    CASE r_ucomm.
+        WHEN 'VOLTAR'.
+            SUBMIT Z_TESTE_HUGO_MAIN VIA SELECTION-SCREEN.
+        WHEN 'VISUALIZAR'.
+            CALL SCREEN 1001.
+        WHEN 'EXCLUIR'.
+          CALL FUNCTION 'POPUP_TO_CONFIRM'
+            EXPORTING
+               TITLEBAR              = 'Excluir registro'
+               TEXT_QUESTION         = 'Deseja realmente excluir o(s) registro(s) ?'
+               TEXT_BUTTON_1         = 'Sim'
+               ICON_BUTTON_1         = 'ICON_CHECKED'
+               TEXT_BUTTON_2         = 'Não'
+               ICON_BUTTON_2         = 'ICON_CANCEL'
+               DISPLAY_CANCEL_BUTTON = ' '
+               POPUP_TYPE            = 'ICON_MESSAGE_ERROR'
+          IMPORTING
+               ANSWER                = resposta.
+
+          IF resposta = 1.
+            LOOP AT ti_ztestehugo WHERE box EQ 'X'.
+                DELETE FROM zteste_hugo WHERE cpf = ti_ztestehugo-cpf.
+                DELETE ti_ztestehugo WHERE cpf = ti_ztestehugo-cpf.
+                COMMIT WORK.
+            ENDLOOP.
+            PERFORM chama_alv USING ti_ztestehugo[] 'USER_COMMAND'.
+          ELSE.
+            REJECT.
+          ENDIF.
+    ENDCASE.
+ ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_1001  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE STATUS_1001 OUTPUT.
+  SET PF-STATUS '1001'.
+  SET TITLEBAR 'DISPLAY'.
+  LOOP AT ti_ztestehugo.
+    IF ti_ztestehugo-box EQ 'X'.
+      ZTESTE_HUGO-CPF = ti_ztestehugo-cpf.
+      ZTESTE_HUGO-NOME = ti_ztestehugo-nome.
+      ZTESTE_HUGO-EMAIL = ti_ztestehugo-email.
+      ZTESTE_HUGO-TELEFONE = ti_ztestehugo-telefone.
+      ZTESTE_HUGO-NASCIMENTO = ti_ztestehugo-nascimento.
+      ZTESTE_HUGO-DTREGISTRO = ti_ztestehugo-dtregistro.
+    ENDIF.
+  ENDLOOP.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_1001  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE USER_COMMAND_1001 INPUT.
+   CASE sy-ucomm.
+        WHEN 'VOLTAR'.
+            LEAVE TO SCREEN 0.
+        WHEN 'BACK'.
+            LEAVE TO SCREEN 0.
+  ENDCASE.
+ENDMODULE.

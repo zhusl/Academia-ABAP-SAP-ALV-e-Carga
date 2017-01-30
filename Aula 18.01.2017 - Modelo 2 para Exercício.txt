@@ -1,0 +1,378 @@
+REPORT Z_MODELO2.
+
+"TYPE-POOLS : icon , slis.
+TABLES : sflight.
+
+CLASS lcl_event_receiver DEFINITION DEFERRED.
+
+TYPES: BEGIN OF ty_sflight.
+        INCLUDE STRUCTURE sflight.
+TYPES: traffic_light TYPE c. "FIELD FOR TRAFFIC LIGHT
+TYPES: line_color(4) TYPE c. "FIELD FOR LINE COLOR
+TYPES: END OF ty_sflight.
+
+TYPES: tyt_sflight TYPE STANDARD TABLE OF ty_sflight.
+
+"DATA: ti_sflight TYPE tyt_sflight.
+DATA: ti_sflight TYPE STANDARD TABLE OF ty_sflight.
+
+*--------------------------------------------------------------------
+* G L O B A L   D A T A
+*--------------------------------------------------------------------
+DATA: ok_code    LIKE sy-ucomm,
+      wa_sflight TYPE ty_sflight, "WORK AREA FOR INTERNAL TABLE
+      wa_layout  TYPE lvc_s_layo. "ALV control: LAYOUT STRUCTURE
+
+* DECLARE REFERENCE VARIABLES TO THE ALV GRID AND THE CONTAINER
+DATA: o_grid             TYPE REF TO cl_gui_alv_grid,
+      o_custom_container TYPE REF TO cl_gui_custom_container,
+      o_event_receiver   TYPE REF TO lcl_event_receiver.
+
+DATA: wa_screen200 LIKE sflight . "WORK AREA FOR SCREEN 200
+
+* DATA FOR STORING INFORMATION ABOUT SELECTED ROWS IN THE GRID
+DATA:
+* INTERNAL TABLE
+ ti_index_rows TYPE lvc_t_row,
+* INFORMATION ABOUT ROW
+ wa_selected_row LIKE lvc_s_row.
+
+*--------------------------------------------------------------------
+* C L A S S E S
+*--------------------------------------------------------------------
+CLASS lcl_event_receiver DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+     handle_toolbar FOR EVENT toolbar OF cl_gui_alv_grid
+       IMPORTING
+         e_object e_interactive,
+
+     handle_user_command FOR EVENT user_command OF cl_gui_alv_grid
+       IMPORTING e_ucomm.
+
+ENDCLASS.                    "lcl_event_receiver DEFINITION
+*---------------------------------------------------------------------*
+*       CLASS lcl_event_receiver IMPLEMENTATION
+*---------------------------------------------------------------------*
+CLASS lcl_event_receiver IMPLEMENTATION.
+
+  METHOD handle_toolbar.
+*  EVENT HANDLER METHOD FOR EVENT TOOLBAR.
+
+    CONSTANTS:
+*  CONSTANTS FOR BUTTON TYPE
+      c_button_normal           TYPE i VALUE 0,
+      c_menu_and_default_button TYPE i VALUE 1,
+      c_menu                    TYPE i VALUE 2,
+      c_separator               TYPE i VALUE 3,
+      c_radio_button            TYPE i VALUE 4,
+      c_checkbox                TYPE i VALUE 5,
+      c_menu_entry              TYPE i VALUE 6.
+
+    DATA: ls_toolbar  TYPE stb_button.
+
+*   APPEND SEPARATOR TO THE NORMAL TOOLBAR
+    CLEAR ls_toolbar.
+    MOVE c_separator TO ls_toolbar-butn_type..
+    APPEND ls_toolbar TO e_object->mt_toolbar.
+
+*   APPEND A NEW BUTTON TO THE TOOLBAR . USE E_OBJECT OF EVENT TOOLBAR .
+*   E_OBJECT IS OF TYPE  CL_ALV_EVENT_TOOLBAR_SET.
+*   THIS CLASS HAS ONE ATTRIBUTE  MT_TOOLBAR WHICH IS OF TABLE TYPE
+*   TTB_BUTTON. THE STRUCTURE IS STB_BUTTON
+
+    CLEAR ls_toolbar.
+    MOVE 'CHANGE'        TO ls_toolbar-function.
+    MOVE  icon_change    TO ls_toolbar-icon.
+    MOVE 'Change flight' TO ls_toolbar-quickinfo.
+    MOVE 'Change'        TO ls_toolbar-text.
+    MOVE ' '             TO ls_toolbar-disabled.
+    APPEND ls_toolbar    TO e_object->mt_toolbar.
+*This code is for giving space in between two icons
+*    CLEAR ls_toolbar.
+*    MOVE c_separator TO ls_toolbar-butn_type..
+*    APPEND ls_toolbar TO e_object->mt_toolbar.
+*
+*
+*    CLEAR ls_toolbar.
+*    MOVE 'SAVE'        TO ls_toolbar-function.
+*    MOVE  icon_display_text    TO ls_toolbar-icon.
+*    MOVE 'Display flight' TO ls_toolbar-quickinfo.
+*    MOVE 'Display'        TO ls_toolbar-text.
+*    MOVE ' '             TO ls_toolbar-disabled.
+*    APPEND ls_toolbar    TO e_object->mt_toolbar.
+
+
+  ENDMETHOD.                    "handle_toolbar
+
+
+  METHOD handle_user_command.
+*   HANDLE OWN FUNCTIONS IN THE TOOLBAR
+    CASE e_ucomm.
+      WHEN 'CHANGE'.
+        PERFORM change_flight.
+    ENDCASE.
+  ENDMETHOD.                    "handle_user_command
+
+ENDCLASS.                    "lcl_event_receiver IMPLEMENTATION
+
+*--------------------------------------------------------------------
+* S T A R T - O F - S E L E C T I O N.
+*--------------------------------------------------------------------
+START-OF-SELECTION.
+  SET SCREEN '100'.
+
+
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+  CASE sy-ucomm.
+    WHEN 'EXIT'.
+      LEAVE TO SCREEN 0.
+  ENDCASE.
+ENDMODULE.                 " USER_COMMAND_0100  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+  DATA:
+*   FOR PARAMETER 'IS_VARIANT' THAT IS SAID TO SET UP OPTIONS FOR STORING
+*   THE GRID LAYOUT AS A VARIANT IN METHOD SET_TABLE_FOR_FIRST_DISPLAY .
+   l_layout TYPE disvariant,
+
+*   UTLITY FIELD
+    l_lines TYPE i.
+
+* AFTER RETURNING FROM SCREEN 200 THE LINE THAT WAS SELECTED BEFORE GOING TO SCREEN 200, SHOULD BE SELECTED AGAIN
+* THE TABLE ti_index_rows WAS THE OUTPUT TABLE FROM THE GET_SELECTED_ROWS METHOD IN FORM CHANGE_FLIGHT.
+  DESCRIBE TABLE ti_index_rows LINES l_lines.
+  IF l_lines > 0.
+    CALL METHOD o_grid->set_selected_rows
+      EXPORTING
+        it_index_rows = ti_index_rows.
+
+    CALL METHOD cl_gui_cfw=>flush.
+    REFRESH ti_index_rows.
+  ENDIF.
+
+
+* READ DATA AND CREATE OBJECTS
+  IF o_custom_container IS INITIAL.
+* READ DATA FROM DATABASE TABLE
+    PERFORM get_data.
+
+*  CREATE OBJECTS FOR CONTAINER AND ALV GRID
+    CREATE OBJECT o_custom_container
+      EXPORTING
+        container_name = 'ALV_CONTAINER'.
+
+    CREATE OBJECT o_grid
+      EXPORTING
+        i_parent = o_custom_container.
+
+*   CREATE OBJECT FOR EVENT_RECEIVER CLASS AND SET HANDLERS
+
+    CREATE OBJECT o_event_receiver.
+    SET HANDLER o_event_receiver->handle_user_command FOR o_grid.
+    SET HANDLER o_event_receiver->handle_toolbar FOR o_grid.
+
+*   LAYOUT (VARIANT) FOR ALV grid
+    l_layout-report = sy-repid. "Layout to report
+
+
+*---------------------------------------------------------------
+* SETUP THE GRID LAYOUT USING A VARIABLE OF STRUCTURE LVC_S_LAYO
+*---------------------------------------------------------------
+
+*   SET GRID TITLE
+    wa_layout-grid_title = 'Flights Display'.
+
+*   SELECTION  MODE - SINGLE ROW WITHOUT BUTTONS
+*   (THIS IS THE DEFAULT MODE)
+    wa_layout-sel_mode = 'B'.
+
+*   NAME OF THE EXCEPTION FIELD (TRAFFIC LIGHT FIELD) AND THE COLOR
+*   FIELD + SET THE EXCEPTION AND COLOR FIELD OF THE TABLE
+    wa_layout-excp_fname = 'TRAFFIC_LIGHT'.
+    wa_layout-info_fname = 'LINE_COLOR'.
+
+    LOOP AT ti_sflight INTO wa_sflight.
+      IF wa_sflight-paymentsum < 100000.
+
+*       VALUE OF TRAFFIC LIGHT FIELD .
+        wa_sflight-traffic_light = '1'.
+
+*       VALUE OF COLOR FIELD :
+*       C = Color, 6=Color 1=Intesified on, 0: Inverse display off
+        wa_sflight-line_color    = 'C610'.
+      ELSEIF wa_sflight-paymentsum => 100000 AND
+             wa_sflight-paymentsum < 1000000.
+        wa_sflight-traffic_light = '2'.
+      ELSE.
+        wa_sflight-traffic_light = '3'.
+      ENDIF.
+      MODIFY ti_sflight FROM wa_sflight.
+    ENDLOOP.
+
+*   GRID SETUP FOR FIRST DISPLAY
+    CALL METHOD o_grid->set_table_for_first_display
+      EXPORTING
+        i_structure_name = 'sflight'
+        is_variant       = l_layout
+        i_save           = 'A'
+        is_layout        = wa_layout
+      CHANGING
+        it_outtab        = ti_sflight.
+
+*-- END OF GRID SETUP -------------------------------------------
+*   RAISE EVENT TOOLBAR TO SHOW THE MODIFIED TOOLBAR
+    CALL METHOD o_grid->set_toolbar_interactive.
+
+*   SET FOCUS TO THE GRID . THIS IS NOT NECESSERY IN THIS EXAMPLE AS THERE IS ONLY ONE CONTROL IN THE SCREEN.
+*
+    CALL METHOD cl_gui_control=>set_focus
+      EXPORTING
+        control = o_grid.
+
+  ENDIF.
+ENDMODULE.                 " STATUS_0100  OUTPUT
+
+
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0201  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0200 INPUT.
+  CASE sy-ucomm.
+    WHEN 'EXIT200'.
+      LEAVE TO SCREEN 100.
+      WHEN'SAVE200'.
+      PERFORM save_changes.
+  ENDCASE.
+
+ENDMODULE.                 " USER_COMMAND_0201  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Form  get_data
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM get_data.
+* Read data from table sflight
+  SELECT *
+    FROM sflight
+    INTO TABLE ti_sflight.
+ENDFORM.                    " load_data_into_grid
+
+*&---------------------------------------------------------------------*
+*&      Form  change_flight
+*&---------------------------------------------------------------------*
+*  READS THE CONTENTS OF THE SELECTED ROW IN THE GRID AND TRANSFERS
+*  THE DATA TO SCREEN 200 , WHERE IT CAN BE CHANGED AND SAVED .
+*----------------------------------------------------------------------*
+FORM change_flight.
+  DATA:l_lines TYPE i.
+
+  REFRESH ti_index_rows.
+  CLEAR   wa_selected_row.
+
+* READ INDEX OF SELECTED ROWS
+  CALL METHOD o_grid->get_selected_rows
+    IMPORTING
+      et_index_rows = ti_index_rows.
+
+* CHECK IF ANY ROW ARE SELECTED AT ALL .IF NOT TABLE ti_index_rows WILL BE EMPTY
+  DESCRIBE TABLE ti_index_rows LINES l_lines.
+  IF l_lines = 0.
+
+    CALL FUNCTION 'POPUP_TO_CONFIRM'
+      EXPORTING
+        titlebar                    = 'POP UP WINDOW'
+*        DIAGNOSE_OBJECT             = ' '
+       text_question               = 'Você deve selecionar uma linha'
+       text_button_1               = 'Sim'
+       icon_button_1               = 'ICON_OKAY'
+       text_button_2               = 'Não'
+       icon_button_2               = 'ICON_CANCEL'
+       default_button              = '1'
+*        DISPLAY_CANCEL_BUTTON       = 'X'
+*        USERDEFINED_F1_HELP         = ' '
+*        START_COLUMN                = 25
+*        START_ROW                   = 6
+       popup_type                  = 'ICON_MESSAGE_INFORMATION'
+*        IV_QUICKINFO_BUTTON_1       = ' '
+*        IV_QUICKINFO_BUTTON_2       = ' '
+*      IMPORTING
+*        ANSWER                      = ANSWER.
+*      TABLES
+*        PARAMETER                   =
+     EXCEPTIONS
+       text_not_found              = 1
+       OTHERS                      = 2
+              .
+    IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    ENDIF.
+
+*       CALL FUNCTION 'POPUP_TO_DISPLAY_TEXT'
+*            EXPORTING
+*                 textline1 = 'You must choose a line'.
+    EXIT.
+  ENDIF.
+
+** READ INDEXES OF SELECTED ROWS . IN THIS EXAMPLE ONLY ONE ROW CAN BE SELECTED AS WE ARE USING wa_layout-SEL_MODE = 'B',
+** SO IT IS ONLY NECESSARY TO READ THE FIRST ENTRY IN TABLE ti_index_rows
+  LOOP AT ti_index_rows INTO wa_selected_row.
+    IF sy-tabix = 1.
+      READ TABLE ti_sflight INDEX wa_selected_row-index INTO wa_sflight.
+    ENDIF.
+  ENDLOOP.
+
+* TRANSFER DATA FROM THE SELECTED ROW TO SCREEN 200 AND SHOW SCREEN 200
+  CLEAR wa_screen200.
+  MOVE-CORRESPONDING wa_sflight TO wa_screen200.
+  LEAVE TO SCREEN '200'.
+
+
+ENDFORM.                    " change_flight
+
+*&---------------------------------------------------------------------*
+*&      Form  save_changes
+*&---------------------------------------------------------------------*
+* CHANGES MADE IN SCREEN 200 ARE WRITTEN TO THE GRID TABLE ti_sflight,
+* AND THE GRID IS UPDATED WITH METHOD REFRESH_TABLE_DISPLAY
+* TO DISPLAY THE CHANGES.
+*----------------------------------------------------------------------*
+FORM save_changes.
+  DATA: l_traffic_light TYPE c.
+
+* UPDATE TRAFFIC LIGHT FIELD
+* UPDATE GRID TABLE , TRAFFIC LIGHT FIELD AND COLOR FIELD.
+* NOTE THAT IT IS NECESSERY TO USE STRUCTURE wa_sflight
+* FOR THE UPDATE , AS THE SCREEN STRUCTURE DOESNOT HAVE A TRAFFIC LIGHT FIELD
+  MOVE-CORRESPONDING wa_screen200 TO wa_sflight.
+  IF wa_sflight-paymentsum < 100000.
+    wa_sflight-traffic_light = '1'.
+*   C = Color, 6=Color 1=Intesified on, 0: Inverse display off
+    wa_sflight-line_color    = 'C610'.
+  ELSEIF wa_sflight-paymentsum => 100000 AND
+         wa_sflight-paymentsum < 1000000.
+    wa_sflight-traffic_light = '2'.
+    CLEAR wa_sflight-line_color.
+  ELSE.
+    wa_sflight-traffic_light = '3'.
+    CLEAR wa_sflight-line_color.
+  ENDIF.
+
+  MODIFY ti_sflight INDEX wa_selected_row-index FROM wa_sflight.
+
+* REFRESH GRID
+  CALL METHOD o_grid->refresh_table_display.
+  CALL METHOD cl_gui_cfw=>flush.
+
+  LEAVE TO SCREEN '100'.
+ENDFORM.                    " save_changes

@@ -1,0 +1,84 @@
+*--- Modelo Geral para Criação de Relatório ---*
+
+REPORT z_rel2_al06.
+
+*************************************************************************
+"Declarações:
+*************************************************************************
+TYPES: BEGIN OF ty_1001,
+         bukrs TYPE t001-bukrs,
+         butxt TYPE t001-butxt,
+         ort01 TYPE t001-ort01,
+         land1 TYPE t001-land1,
+       END OF ty_1001.
+
+DATA: ti_t001 TYPE STANDARD TABLE OF ty_1001.
+
+* Declarações do ALV
+DATA: ti_fieldcat TYPE STANDARD TABLE OF slis_fieldcat_alv,
+      ti_events   TYPE STANDARD TABLE OF slis_alv_event,
+      wa_layout   TYPE slis_layout_alv.
+
+*************************************************************************
+"Eventos
+*************************************************************************
+START-OF-SELECTION.
+  PERFORM obtem_dados.
+
+END-OF-SELECTION.
+  PERFORM monta_fieldcat.
+  PERFORM registra_eventos.
+  PERFORM define_layout.
+  PERFORM exibe_alv.
+
+*************************************************************************
+  "Subrotinas
+*************************************************************************
+
+*&---------------------------------------------------------------------*
+*&      Form  obtem_dados
+*&---------------------------------------------------------------------*
+FORM obtem_dados .
+  SELECT bukrs
+         butxt
+         ort01
+         land1
+    FROM t001
+    INTO TABLE ti_t001
+    UP TO 30 ROWS.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  monta_fieldcat
+*&---------------------------------------------------------------------*
+FORM monta_fieldcat .
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  registra_eventos
+*&---------------------------------------------------------------------*
+FORM registra_eventos.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  define_layout
+*&---------------------------------------------------------------------*
+FORM define_layout .
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  exibe_alv
+*&---------------------------------------------------------------------*
+FORM exibe_alv.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  monta_cabecalho
+*&---------------------------------------------------------------------*
+FORM monta_cabecalho.
+
+ENDFORM.

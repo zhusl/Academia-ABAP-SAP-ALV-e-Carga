@@ -1,0 +1,239 @@
+------- Modelo 3 -------
+
+------- Includes do Programa -------
+
+
+------- Include Z_MODELO3_TOP -------
+
+TABLES: zylivro_inst.
+
+TYPES: BEGIN OF st_saida,
+         codliv    TYPE zylivro_inst-codliv,
+         descliv   TYPE zylivro_inst-descliv,
+         valliv    TYPE zylivro_inst-valliv,
+         moeda     TYPE zylivro_inst-moeda,
+         nomeautor TYPE zyautor_inst-nomeautor,
+         sexo      TYPE zyautor_inst-sexo,
+         descgen   TYPE zygenero_inst-descgen,
+       END OF st_saida.
+
+DATA: wa_saida  TYPE st_saida,
+      wa_livro  TYPE zylivro_inst,
+      wa_autor  TYPE zyautor_inst,
+      wa_genero TYPE zygenero_inst.
+
+DATA: it_saida   TYPE TABLE OF st_saida,
+      it_livro   TYPE TABLE OF zylivro_inst,
+      it_autor   TYPE TABLE OF zyautor_inst,
+      it_genero  TYPE TABLE OF zygenero_inst,
+      gv_autor   TYPE zyautor_inst-nomeautor,
+      gv_descgen TYPE zygenero_inst-descgen.
+
+
+
+------ Include Z_MODELO3_MODULES ------
+
+*&---------------------------------------------------------------------*
+*&  Include           Z_MODELO3_MODULES
+*&---------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*&      Module  EXIBE_TELA  OUTPUT
+*&---------------------------------------------------------------------*
+MODULE exibe_tela OUTPUT.
+  SELECT MAX( codliv ) FROM zylivro_inst INTO zylivro_inst-codliv.
+  ADD 1 TO zylivro_inst-codliv.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+  CASE sy-ucomm.
+    WHEN 'SAVE'.
+      PERFORM salvar.
+      LEAVE TO SCREEN 0.
+    WHEN 'CANCEL'.
+      LEAVE PROGRAM.
+    WHEN OTHERS.
+  ENDCASE.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  VALIDA_AUTOR  INPUT
+*&---------------------------------------------------------------------*
+MODULE valida_autor INPUT.
+  SELECT SINGLE nomeautor FROM zyautor_inst
+    INTO gv_autor
+   WHERE codautor = zylivro_inst-codautor.
+
+  IF sy-subrc NE 0.
+    MESSAGE e004 WITH zylivro_inst-codautor.
+  ENDIF.
+ENDMODULE.
+
+*&---------------------------------------------------------------------*
+*&      Module  VALIDA_GENERO  INPUT
+*&---------------------------------------------------------------------*
+MODULE valida_genero INPUT.
+  SELECT SINGLE DESCGEN FROM zygenero_inst
+    INTO gv_descgen
+   WHERE codgen = zylivro_inst-codgen.
+
+  IF sy-subrc NE 0.
+    MESSAGE e004 WITH zylivro_inst-codgen.
+  ENDIF.
+ENDMODULE.
+
+
+
+---------- Programa Principal --------------
+
+REPORT z_modelo3 MESSAGE-ID zycm_instrutor.
+
+INCLUDE z_modelo3_top.
+INCLUDE z_modelo3_modules.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE text-002.
+PARAMETERS: p_join TYPE c RADIOBUTTON GROUP c1,
+            p_all  TYPE c RADIOBUTTON GROUP c1 DEFAULT 'X',
+            p_ins  TYPE c RADIOBUTTON GROUP c1.
+SELECTION-SCREEN END OF BLOCK b2.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+SELECT-OPTIONS: so_liv FOR zylivro_inst-codliv.
+SELECTION-SCREEN END OF BLOCK b1.
+
+START-OF-SELECTION.
+
+  IF p_join = 'X'.
+    PERFORM executa_join.
+  ELSEIF p_all = 'X'.
+    PERFORM executa_for_all_entries.
+  ELSEIF p_ins = 'X'.
+    PERFORM insere_livro.
+  ENDIF.
+
+AT LINE-SELECTION.
+  WRITE: 'Lista Secundária'.
+
+*&---------------------------------------------------------------------*
+*&      Form  EXIBE_LIVROS
+*&---------------------------------------------------------------------*
+FORM exibe_livros .
+  LOOP AT it_saida INTO wa_saida.
+    WRITE: / wa_saida-codliv,
+            wa_saida-descliv(20),
+            wa_saida-valliv,
+            wa_saida-moeda,
+            wa_saida-nomeautor,
+            wa_saida-sexo,
+            wa_saida-descgen.
+    CLEAR wa_saida.
+  ENDLOOP.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  EXECUTA_JOIN
+*&---------------------------------------------------------------------*
+FORM executa_join .
+
+  SELECT a~codliv a~descliv a~valliv a~moeda
+             b~nomeautor b~sexo c~descgen
+      INTO TABLE it_saida
+      FROM zylivro_inst AS a INNER JOIN zyautor_inst AS b
+      ON a~codautor = b~codautor
+      INNER JOIN zygenero_inst AS c
+      ON a~codgen = c~codgen
+        WHERE a~codliv IN so_liv.
+
+  IF sy-subrc = 0.
+    PERFORM exibe_livros.
+  ELSE.
+    WRITE: 'Não foram encontrados registros.'.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  EXECUTA_FOR_ALL_ENTRIES
+*&---------------------------------------------------------------------*
+FORM executa_for_all_entries .
+  PERFORM executa_selecoes.
+  PERFORM consiste_dados.
+  PERFORM exibe_livros.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  EXECUTA_SELECOES
+*&---------------------------------------------------------------------*
+FORM executa_selecoes .
+
+  SELECT * FROM zylivro_inst
+         INTO TABLE  it_livro
+         WHERE codliv IN so_liv.
+
+  IF it_livro IS NOT INITIAL.
+
+    CALL FUNCTION 'ZYBUSCA_AUT_GEN_INST'
+      EXPORTING
+        it_livro  = it_livro
+      IMPORTING
+        it_autor  = it_autor
+        it_genero = it_genero.
+
+*    SELECT * FROM zyautor_inst
+*      INTO TABLE it_autor
+*      FOR ALL ENTRIES IN it_livro
+*      WHERE codautor = it_livro-codautor.
+*
+*    SELECT * FROM zygenero_inst
+*      INTO TABLE it_genero
+*      FOR ALL ENTRIES IN it_livro
+*      WHERE codgen = it_livro-codgen.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  CONSISTE_DADOS
+*&---------------------------------------------------------------------*
+FORM consiste_dados .
+
+  LOOP AT it_livro INTO wa_livro.
+    wa_saida-codliv = wa_livro-codliv.
+    wa_saida-descliv = wa_livro-descliv.
+    wa_saida-valliv  = wa_livro-valliv.
+    wa_saida-moeda  = wa_livro-moeda.
+
+    READ TABLE it_autor INTO wa_autor
+                        WITH KEY codautor = wa_livro-codautor.
+    IF sy-subrc = 0.
+      wa_saida-nomeautor = wa_autor-nomeautor.
+      wa_saida-sexo = wa_autor-sexo.
+    ENDIF.
+
+    READ TABLE it_genero INTO wa_genero
+                         WITH KEY codgen = wa_livro-codgen.
+    IF sy-subrc = 0.
+      wa_saida-descgen = wa_genero-descgen.
+    ENDIF.
+
+    APPEND wa_saida TO it_saida.
+    CLEAR wa_saida.
+
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  INSERE_LIVRO
+*&---------------------------------------------------------------------*
+FORM insere_livro .
+  CALL SCREEN 100.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  SALVAR
+*&---------------------------------------------------------------------*
+FORM salvar .
+  MODIFY zylivro_inst.
+  IF sy-subrc EQ 0.
+    MESSAGE s005.
+  ENDIF.
+ENDFORM.

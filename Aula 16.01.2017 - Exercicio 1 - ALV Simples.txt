@@ -1,0 +1,319 @@
+REPORT z_rel1_inst1 "MESSAGE-ID ysf
+                NO STANDARD PAGE HEADING
+                LINE-SIZE  96
+                LINE-COUNT 65.
+
+********************************************************
+"Definições de Tipos
+********************************************************
+
+TYPES: BEGIN OF ty_ekko,
+         ebeln TYPE ekko-ebeln, "Numero do pedido
+         aedat TYPE ekko-aedat, "Data do pedido
+         lifnr TYPE ekko-lifnr, "Numero do fornecedor
+       END OF ty_ekko.
+
+TYPES: BEGIN OF ty_ekpo,
+         ebeln TYPE ekpo-ebeln, "Numero do pedido
+         ebelp TYPE ekpo-ebelp, "Numero do item
+         matnr TYPE ekpo-matnr, "Código do material
+         menge TYPE ekpo-menge, "Unidade
+         meins TYPE ekpo-meins, "Quantidade
+         netwr TYPE ekpo-netwr, "valor
+       END OF ty_ekpo.
+
+TYPES: BEGIN OF ty_lfa1,
+         lifnr TYPE lfa1-lifnr,
+         name1 TYPE lfa1-name1,
+       END OF ty_lfa1.
+
+TYPES: BEGIN OF ty_rel,
+         ebeln TYPE ekko-ebeln,
+         aedat TYPE ekko-aedat,
+         lifnr TYPE ekko-lifnr,
+         name1 TYPE lfa1-name1,
+         total TYPE ekpo-netpr,
+       END OF ty_rel.
+
+
+
+********************************************************
+"Declarações de variáveis
+********************************************************
+
+DATA: ti_fieldcat TYPE slis_t_fieldcat_alv, "WITH HEADER LINE,
+      wa_layout   TYPE slis_layout_alv.
+
+DATA: ti_ekko TYPE STANDARD TABLE OF ty_ekko,
+      ti_ekpo TYPE STANDARD TABLE OF ty_ekpo,
+      ti_lfa1 TYPE STANDARD TABLE OF ty_lfa1,
+      ti_rel  TYPE STANDARD TABLE OF ty_rel.
+
+TABLES ekko.
+
+
+********************************************************
+"Tela de seleção
+********************************************************
+SELECT-OPTIONS sc_ebeln FOR ekko-ebeln.
+
+********************************************************
+"Lógica principal
+********************************************************
+START-OF-SELECTION.
+
+  sc_ebeln-sign = 'I'.
+  sc_ebeln-option = 'BT'.
+  sc_ebeln-low =  4500000000.
+  sc_ebeln-high = 4500001000.
+  APPEND sc_ebeln.
+
+  PERFORM buscar_dados.
+  PERFORM processar_dados.
+  "PERFORM exibir_dados.
+  PERFORM exibir_alv.
+
+TOP-OF-PAGE.
+  PERFORM cabecalho.
+
+AT LINE-SELECTION.
+  PERFORM pop_up.
+
+*&---------------------------------------------------------------------*
+*&      Form  BUSCAR_DADOS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM buscar_dados .
+
+  SELECT ebeln
+         aedat
+         lifnr
+    FROM ekko
+    INTO TABLE ti_ekko
+   WHERE ebeln IN sc_ebeln.
+
+  IF sy-subrc EQ 0.
+
+    SELECT lifnr
+           name1
+      FROM lfa1
+      INTO TABLE ti_lfa1
+     FOR ALL ENTRIES IN ti_ekko
+     WHERE lifnr EQ ti_ekko-lifnr.
+
+    SELECT ebeln
+           ebelp
+           matnr
+           menge
+           meins
+           netwr
+      FROM ekpo
+      INTO TABLE ti_ekpo
+      FOR ALL ENTRIES IN ti_ekko
+     WHERE ebeln EQ ti_ekko-ebeln.
+
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  PROCESSAR_DADOS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM processar_dados .
+  DATA: wa_ekko LIKE LINE OF ti_ekko,
+        wa_ekpo LIKE LINE OF ti_ekpo,
+        wa_lfa1 LIKE LINE OF ti_lfa1,
+        wa_rel  LIKE LINE OF ti_rel.
+  DATA  lv_total TYPE ekpo-netpr.
+
+  LOOP AT ti_ekko INTO wa_ekko.
+
+    "Atribuo os campos do cabeçalho
+    "**********************************************************
+    wa_rel-ebeln = wa_ekko-ebeln.
+    wa_rel-aedat = wa_ekko-aedat.
+    wa_rel-lifnr = wa_ekko-lifnr.
+
+
+    "Busco a descrição do fornecedor
+    "**********************************************************
+    READ TABLE ti_lfa1 WITH KEY lifnr = wa_ekko-lifnr
+          INTO wa_lfa1.
+
+    IF sy-subrc = 0.
+
+      wa_rel-name1 = wa_lfa1-name1.
+
+    ENDIF.
+
+
+    "Calculo o total do pedido
+    "**********************************************************
+    LOOP AT ti_ekpo INTO wa_ekpo WHERE ebeln = wa_ekko-ebeln.
+
+      lv_total = lv_total + wa_ekpo-netwr.
+
+    ENDLOOP.
+
+    wa_rel-total = lv_total.
+
+    "Acrescento a linha preenchida a tabela interna
+    "**********************************************************
+    APPEND wa_rel TO ti_rel.
+
+    "Limpo as variáveis para o proximo registro.
+    "**********************************************************
+    CLEAR: wa_ekpo,
+           wa_lfa1,
+           wa_rel,
+           lv_total.
+
+  ENDLOOP.
+
+  SORT ti_rel BY  aedat lifnr ebeln.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  EXIBIR_DADOS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM exibir_dados .
+
+  "Ponteiro da linha na tabela (semelhante a uma Work area porém com endereços)
+  FIELD-SYMBOLS <fs_rel> LIKE LINE OF ti_rel.
+
+  LOOP AT ti_rel ASSIGNING <fs_rel>.
+
+    AT FIRST. "Na primeira linha
+      ULINE.
+    ENDAT.
+
+    WRITE: / sy-vline,
+          003 <fs_rel>-aedat,
+          014 sy-vline,
+          016 <fs_rel>-ebeln ,
+          027 sy-vline,
+          029 <fs_rel>-lifnr HOTSPOT ON,
+          040 sy-vline,
+          042 <fs_rel>-name1,
+          078 sy-vline,
+          079 <fs_rel>-total,
+          096 sy-vline.
+
+    AT LAST.
+      ULINE.
+    ENDAT.
+
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  CABECALHO
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM cabecalho .
+
+  SKIP.
+  ULINE.
+
+  WRITE: sy-vline,
+         003 'Data',
+         014 sy-vline,
+         016 'Pedido',
+         027 sy-vline,
+         029 'Fornecedor',
+         040  sy-vline,
+         042 'Nome do Fornecedor',
+         078   sy-vline,
+         079 'Total do Pedido',
+         096 sy-vline.
+
+  ULINE.
+  SKIP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  pop_up
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM pop_up .
+  DATA lc_fornecedor TYPE lfa1-lifnr.
+  lc_fornecedor = sy-lisel+28(10).
+
+  WINDOW STARTING AT 5 3 ENDING AT 40 10.
+  WRITE: 'Voce clicou no fornecedor: ',
+          lc_fornecedor.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  EXIBIR_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM exibir_alv .
+  PERFORM append_fieldcat.
+  PERFORM chama_alv USING ti_rel[].
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  APPEND_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM append_fieldcat .
+
+  FIELD-SYMBOLS <fs_fieldcat> LIKE LINE OF ti_fieldcat.
+  APPEND INITIAL LINE TO ti_fieldcat ASSIGNING <fs_fieldcat>.
+  <fs_fieldcat>-col_pos = '1'.
+  <fs_fieldcat>-fieldname = 'EBELN'.
+  <fs_fieldcat>-tabname = 'TI_REL'.
+  <fs_fieldcat>-seltext_m = 'ebeln'.
+  <fs_fieldcat>-key = 'X'.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  CHAMA_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_TI_REL[]  text
+*----------------------------------------------------------------------*
+FORM chama_alv  USING    p_ti_rel.
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      is_layout     = wa_layout
+      it_fieldcat   = ti_fieldcat
+    TABLES
+      t_outtab      = ti_rel
+    EXCEPTIONS
+      program_error = 1
+      OTHERS        = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+ENDFORM.
